@@ -26,6 +26,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Install sharp for icon generation
+        run: npm install sharp
+
+      - name: Generate app icons
+        run: node make-icons.js
+
       - name: Build web app
         run: npm run build
 
