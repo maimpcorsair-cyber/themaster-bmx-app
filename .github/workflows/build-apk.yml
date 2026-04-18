@@ -29,9 +29,6 @@ jobs:
       - name: Install sharp
         run: npm install sharp
 
-      - name: Generate icons
-        run: node gen-icons.js
-
       - name: Build web app
         run: npm run build
 
@@ -39,6 +36,27 @@ jobs:
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap sync android
+
+      - name: Generate launcher icons
+        run: |
+          node -e "
+          const sharp = require('sharp');
+          const fs = require('fs');
+          const base = './android/app/src/main/res/';
+          const svg = '<svg width=\"512\" height=\"512\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"512\" height=\"512\" fill=\"#000\"/><text x=\"256\" y=\"200\" font-family=\"Arial\" font-size=\"60\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">THE</text><text x=\"256\" y=\"270\" font-family=\"Arial\" font-size=\"70\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">MASTER</text><rect x=\"100\" y=\"290\" width=\"312\" height=\"6\" fill=\"white\"/><text x=\"256\" y=\"360\" font-family=\"Arial\" font-size=\"40\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">BMX SCHOOL</text><text x=\"256\" y=\"420\" font-family=\"Arial\" font-size=\"24\" fill=\"#888\" text-anchor=\"middle\">สอนปั่นจักรยาน BMX</text></svg>';
+          sharp(Buffer.from(svg)).png().toBuffer().then(async buf => {
+            const dirs = ['mdpi','hdpi','xhdpi','xxhdpi','xxxhdpi'];
+            const sizes = [48,72,96,144,192];
+            for (let i=0; i<dirs.length; i++) {
+              const d = dirs[i];
+              const resized = await sharp(buf).resize(sizes[i],sizes[i]).toBuffer();
+              fs.writeFileSync(base+d+'/ic_launcher.png', resized);
+              fs.writeFileSync(base+d+'/ic_launcher_round.png', resized);
+              fs.writeFileSync(base+d+'/ic_launcher_foreground.png', buf);
+            }
+            console.log('Icons generated!');
+          });
+          "
 
       - name: Setup Java
         uses: actions/setup-java@v4
