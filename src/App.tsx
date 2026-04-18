@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // Firebase config
 const firebaseConfig = {
@@ -15,6 +16,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 interface Program {
   id: string;
@@ -36,6 +38,17 @@ interface Schedule {
   slots: number;
 }
 
+interface Registration {
+  id?: string;
+  studentName: string;
+  phone: string;
+  program: string;
+  age?: string;
+  photoUrl?: string;
+  status: string;
+  createdAt: string;
+}
+
 const programs: Program[] = [
   { id: 'little', name: 'Little BMX', nameTh: 'ลิตเติ้ล บีเอ็มเอ็กซ์ (6-8 ปี)', price: 1500, duration: '6 ครั้ง', gradient: 'from-emerald-500 to-teal-600', icon: '🚴' },
   { id: 'junior', name: 'Junior', nameTh: 'จูเนียร์ (9-12 ปี)', price: 2000, duration: '6 ครั้ง', gradient: 'from-blue-500 to-indigo-600', icon: '🏆' },
@@ -45,11 +58,13 @@ const programs: Program[] = [
   { id: 'private-elite', name: 'Private Elite', nameTh: 'เซสชันส่วนตัว อิลิต', price: 1500, duration: '1 ชม.', gradient: 'from-yellow-500 to-amber-500', icon: '💎' },
 ];
 
-const locations = {
+const locations: { [key: string]: { name: string; emoji: string } } = {
   rush: { name: 'Rush Arena', emoji: '🏟️' },
   bang: { name: 'Bang Sare', emoji: '🌴' },
   pattaya: { name: 'Pattaya', emoji: '🏖️' }
 };
+
+const days = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัส', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
 
 // Premium Header
 function PremiumHeader({ title, emoji }: { title: string; emoji: string }) {
@@ -75,6 +90,66 @@ function PremiumCard({ children, className = '' }: { children: React.ReactNode; 
   return (
     <div className={`bg-gradient-to-br from-gray-800/80 to-gray-900/80 backdrop-blur-sm border border-gray-700/50 rounded-2xl shadow-xl ${className}`}>
       {children}
+    </div>
+  );
+}
+
+// Image Upload Component
+function ImageUpload({ onUpload }: { onUpload: (url: string) => void }) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Show preview
+    const reader = new FileReader();
+    reader.onload = (ev) => setPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+
+    // Upload to Firebase Storage
+    setUploading(true);
+    try {
+      const filename = `riders/${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, filename);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      onUpload(url);
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('อัพโหลดรูปไม่สำเร็จ');
+    }
+    setUploading(false);
+  };
+
+  return (
+    <div className="flex flex-col items-center">
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+      
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className="w-32 h-32 rounded-2xl border-2 border-dashed border-gray-600 hover:border-red-500 flex flex-col items-center justify-center gap-2 transition-all overflow-hidden"
+        disabled={uploading}
+      >
+        {preview ? (
+          <img src={preview} alt="Preview" className="w-full h-full object-cover" />
+        ) : (
+          <>
+            <span className="text-4xl">{uploading ? '⏳' : '📷'}</span>
+            <span className="text-xs text-gray-400">{uploading ? 'กำลังอัพ...' : 'เพิ่มรูป'}</span>
+          </>
+        )}
+      </button>
+      <p className="text-xs text-gray-500 mt-2">ถ่ายรูปหรือเลือกจากอัลบั้ม</p>
     </div>
   );
 }
@@ -116,7 +191,6 @@ function HomePage() {
   
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      {/* Hero Section */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-red-900/20 via-transparent to-transparent" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-red-600/10 via-transparent to-transparent" />
@@ -150,7 +224,6 @@ function HomePage() {
         </div>
       </div>
 
-      {/* Stats */}
       <div className="max-w-4xl mx-auto px-4 -mt-8 relative z-10">
         <div className="grid grid-cols-3 gap-3">
           {[
@@ -167,7 +240,6 @@ function HomePage() {
         </div>
       </div>
 
-      {/* Programs Preview */}
       <div className="max-w-4xl mx-auto px-4 mt-12 pb-32">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-black">🔥 คอร์สยอดนิยม</h2>
@@ -187,9 +259,9 @@ function HomePage() {
         <div className="max-w-4xl mx-auto flex justify-around">
           {[
             { path: '/', icon: '🏠', label: 'หน้าแรก', active: true },
-            { path: '/programs', icon: '📚', label: 'คอร์ส', active: false },
-            { path: '/schedule', icon: '📅', label: 'ตาราง', active: false },
-            { path: '/register', icon: '📝', label: 'สมัคร', active: false },
+            { path: '/programs', icon: '📚', label: 'คอร์ส' },
+            { path: '/schedule', icon: '📅', label: 'ตาราง' },
+            { path: '/register', icon: '📝', label: 'สมัคร' },
           ].map((item) => (
             <Link 
               key={item.path} 
@@ -237,15 +309,7 @@ function ProgramsPage() {
             { path: '/schedule', icon: '📅', label: 'ตาราง' },
             { path: '/register', icon: '📝', label: 'สมัคร' },
           ].map((item) => (
-            <Link 
-              key={item.path} 
-              to={item.path}
-              className={`flex flex-col items-center p-2 rounded-xl transition-all ${
-                (item as any).active 
-                  ? 'text-red-500 bg-red-500/10' 
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}
-            >
+            <Link key={item.path} to={item.path} className={`flex flex-col items-center p-2 rounded-xl transition-all ${(item as any).active ? 'text-red-500 bg-red-500/10' : 'text-gray-500 hover:text-gray-300'}`}>
               <span className="text-2xl">{item.icon}</span>
               <span className="text-xs font-bold mt-1">{item.label}</span>
             </Link>
@@ -284,38 +348,19 @@ function SchedulePage() {
     fetchSchedule();
   }, []);
 
-  const days = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัส', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
-  const filteredSchedule = selectedDay 
-    ? schedule.filter(s => s.day === selectedDay)
-    : schedule;
+  const filteredSchedule = selectedDay ? schedule.filter(s => s.day === selectedDay) : schedule;
 
   return (
     <div className="min-h-screen bg-gray-950 text-white pb-24">
       <PremiumHeader title="📅 ตารางเรียน" emoji="📅" />
       
       <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Day Filter */}
         <div className="flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide">
-          <button
-            onClick={() => setSelectedDay(null)}
-            className={`flex-shrink-0 px-4 py-2 rounded-xl font-bold text-sm transition-all ${
-              selectedDay === null 
-                ? 'bg-red-500 text-white' 
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
-          >
+          <button onClick={() => setSelectedDay(null)} className={`flex-shrink-0 px-4 py-2 rounded-xl font-bold text-sm transition-all ${selectedDay === null ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
             ทั้งหมด
           </button>
           {days.map(day => (
-            <button
-              key={day}
-              onClick={() => setSelectedDay(day)}
-              className={`flex-shrink-0 px-4 py-2 rounded-xl font-bold text-sm transition-all ${
-                selectedDay === day 
-                  ? 'bg-red-500 text-white' 
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-            >
+            <button key={day} onClick={() => setSelectedDay(day)} className={`flex-shrink-0 px-4 py-2 rounded-xl font-bold text-sm transition-all ${selectedDay === day ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
               {day}
             </button>
           ))}
@@ -329,14 +374,10 @@ function SchedulePage() {
         ) : (
           <div className="space-y-4">
             {filteredSchedule.map((s, i) => {
-              const loc = locations[s.location as keyof typeof locations] || { name: s.location, emoji: '📍' };
+              const loc = locations[s.location] || { name: s.location, emoji: '📍' };
               const program = programs.find(p => p.id === s.program);
               return (
-                <div 
-                  key={s.id} 
-                  className="bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-2xl p-5 hover:scale-[1.01] transition-all"
-                  style={{ animationDelay: `${i * 50}ms` }}
-                >
+                <div key={s.id} className="bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-2xl p-5 hover:scale-[1.01] transition-all">
                   <div className="flex items-start gap-4">
                     <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${program?.gradient || 'from-gray-600 to-gray-700'} flex flex-col items-center justify-center shadow-lg`}>
                       <div className="text-sm font-black">{s.day}</div>
@@ -348,20 +389,12 @@ function SchedulePage() {
                         <h3 className="text-lg font-black">{s.program.toUpperCase()}</h3>
                       </div>
                       <div className="flex flex-wrap gap-3 text-sm text-gray-400">
-                        <span className="flex items-center gap-1">
-                          <span>{loc.emoji}</span>
-                          {loc.name}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <span>👨‍🏫</span>
-                          {s.coach}
-                        </span>
+                        <span className="flex items-center gap-1"><span>{loc.emoji}</span>{loc.name}</span>
+                        <span className="flex items-center gap-1"><span>👨‍🏫</span>{s.coach}</span>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className={`text-2xl font-black ${s.slots > 5 ? 'text-green-400' : s.slots > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
-                        {s.slots}
-                      </div>
+                      <div className={`text-2xl font-black ${s.slots > 5 ? 'text-green-400' : s.slots > 0 ? 'text-yellow-400' : 'text-red-400'}`}>{s.slots}</div>
                       <div className="text-xs text-gray-500">ที่นั่งว่าง</div>
                     </div>
                   </div>
@@ -380,15 +413,7 @@ function SchedulePage() {
             { path: '/schedule', icon: '📅', label: 'ตาราง', active: true },
             { path: '/register', icon: '📝', label: 'สมัคร' },
           ].map((item) => (
-            <Link 
-              key={item.path} 
-              to={item.path}
-              className={`flex flex-col items-center p-2 rounded-xl transition-all ${
-                (item as any).active 
-                  ? 'text-red-500 bg-red-500/10' 
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}
-            >
+            <Link key={item.path} to={item.path} className={`flex flex-col items-center p-2 rounded-xl transition-all ${(item as any).active ? 'text-red-500 bg-red-500/10' : 'text-gray-500 hover:text-gray-300'}`}>
               <span className="text-2xl">{item.icon}</span>
               <span className="text-xs font-bold mt-1">{item.label}</span>
             </Link>
@@ -402,19 +427,42 @@ function SchedulePage() {
 // Register Page
 function RegisterPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', phone: '', program: 'junior' });
+  const [form, setForm] = useState({ 
+    name: '', 
+    phone: '', 
+    program: 'junior',
+    age: '',
+    photoUrl: ''
+  });
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    
-    setTimeout(() => {
+    setError('');
+
+    try {
+      const registration: Omit<Registration, 'id'> = {
+        studentName: form.name,
+        phone: form.phone,
+        program: form.program,
+        age: form.age,
+        photoUrl: form.photoUrl,
+        status: 'new',
+        createdAt: new Date().toISOString(),
+      };
+
+      await addDoc(collection(db, 'registrations'), registration);
+      
       setSuccess(true);
-      setSubmitting(false);
       setTimeout(() => navigate('/'), 2000);
-    }, 1500);
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    }
+    setSubmitting(false);
   };
 
   if (success) {
@@ -442,6 +490,13 @@ function RegisterPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Photo Upload */}
+          <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-2xl p-6">
+            <label className="block text-sm font-bold text-gray-300 mb-4">📷 รูปนักกีฬา</label>
+            <ImageUpload onUpload={(url) => setForm({ ...form, photoUrl: url })} />
+          </div>
+
+          {/* Program Selection */}
           <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-2xl p-6">
             <label className="block text-sm font-bold text-gray-300 mb-3">🏷️ คอร์สที่สนใจ</label>
             <div className="grid grid-cols-2 gap-3">
@@ -450,11 +505,7 @@ function RegisterPage() {
                   key={p.id}
                   type="button"
                   onClick={() => setForm({ ...form, program: p.id })}
-                  className={`p-4 rounded-xl border-2 transition-all ${
-                    form.program === p.id 
-                      ? 'border-red-500 bg-red-500/10' 
-                      : 'border-gray-700 hover:border-gray-600'
-                  }`}
+                  className={`p-4 rounded-xl border-2 transition-all ${form.program === p.id ? 'border-red-500 bg-red-500/10' : 'border-gray-700 hover:border-gray-600'}`}
                 >
                   <div className="text-2xl mb-1">{p.icon}</div>
                   <div className="font-bold text-sm">{p.name}</div>
@@ -464,6 +515,7 @@ function RegisterPage() {
             </div>
           </div>
 
+          {/* Name */}
           <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-2xl p-6">
             <label className="block text-sm font-bold text-gray-300 mb-3">👤 ชื่อ-นามสกุล</label>
             <input
@@ -476,6 +528,19 @@ function RegisterPage() {
             />
           </div>
 
+          {/* Age */}
+          <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-2xl p-6">
+            <label className="block text-sm font-bold text-gray-300 mb-3">🎂 อายุ</label>
+            <input
+              type="text"
+              value={form.age}
+              onChange={(e) => setForm({ ...form, age: e.target.value })}
+              className="w-full bg-gray-900/80 border border-gray-700 rounded-xl p-4 text-white placeholder-gray-500 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
+              placeholder="เช่น 8 ปี"
+            />
+          </div>
+
+          {/* Phone */}
           <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-2xl p-6">
             <label className="block text-sm font-bold text-gray-300 mb-3">📱 เบอร์โทรศัพท์</label>
             <input
@@ -487,6 +552,12 @@ function RegisterPage() {
               required
             />
           </div>
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4 text-red-400 text-center">
+              {error}
+            </div>
+          )}
 
           <button
             type="submit"
@@ -518,15 +589,7 @@ function RegisterPage() {
             { path: '/schedule', icon: '📅', label: 'ตาราง' },
             { path: '/register', icon: '📝', label: 'สมัคร', active: true },
           ].map((item) => (
-            <Link 
-              key={item.path} 
-              to={item.path}
-              className={`flex flex-col items-center p-2 rounded-xl transition-all ${
-                (item as any).active 
-                  ? 'text-red-500 bg-red-500/10' 
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}
-            >
+            <Link key={item.path} to={item.path} className={`flex flex-col items-center p-2 rounded-xl transition-all ${(item as any).active ? 'text-red-500 bg-red-500/10' : 'text-gray-500 hover:text-gray-300'}`}>
               <span className="text-2xl">{item.icon}</span>
               <span className="text-xs font-bold mt-1">{item.label}</span>
             </Link>
