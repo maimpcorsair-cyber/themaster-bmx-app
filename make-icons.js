@@ -17,23 +17,33 @@ async function main() {
   const buf = await sharp(Buffer.from(svg)).png().toBuffer();
   
   const res = './android/app/src/main/res/';
-  const sizes = [48, 72, 96, 144, 192, 512];
-  const dirs = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
   
-  for (const dir of dirs) {
-    for (const size of sizes) {
-      const name = `${dir}/ic_launcher.png`;
-      const roundName = `${dir}/ic_launcher_round.png`;
-      const fgName = `${dir}/ic_launcher_foreground.png`;
-      
-      const resized = await sharp(buf).resize(size, size).toBuffer();
-      fs.writeFileSync(res + name, resized);
-      fs.writeFileSync(res + roundName, resized);
-      if (size <= 96) fs.writeFileSync(res + fgName, buf);
-    }
+  // Generate foreground (512x512)
+  fs.writeFileSync(res + 'mipmap-hdpi/ic_launcher_foreground.png', buf);
+  fs.writeFileSync(res + 'mipmap-mdpi/ic_launcher_foreground.png', buf);
+  fs.writeFileSync(res + 'mipmap-xhdpi/ic_launcher_foreground.png', buf);
+  fs.writeFileSync(res + 'mipmap-xxhdpi/ic_launcher_foreground.png', buf);
+  fs.writeFileSync(res + 'mipmap-xxxhdpi/ic_launcher_foreground.png', buf);
+  console.log('Created foreground icons');
+  
+  // Generate launcher icons for each density
+  const densities = [
+    { dir: 'mdpi', size: 48 },
+    { dir: 'hdpi', size: 72 },
+    { dir: 'xhdpi', size: 96 },
+    { dir: 'xxhdpi', size: 144 },
+    { dir: 'xxxhdpi', size: 192 },
+  ];
+  
+  for (const d of densities) {
+    const resized = await sharp(buf).resize(d.size, d.size).toBuffer();
+    fs.writeFileSync(res + d.dir + '/ic_launcher.png', resized);
+    fs.writeFileSync(res + d.dir + '/ic_launcher_round.png', resized);
+    fs.writeFileSync(res + d.dir + '/ic_launcher_foreground.png', buf); // Use full size for foreground
+    console.log('Created ' + d.dir + ' icons (' + d.size + 'px)');
   }
-  fs.writeFileSync(res + 'xxxhdpi/ic_launcher_foreground.png', buf);
-  console.log('done');
+  
+  console.log('All icons generated!');
 }
 
-main().catch(console.error);
+main().catch(e => { console.error(e); process.exit(1); });
