@@ -454,7 +454,7 @@ function RegisterPage() {
         createdAt: new Date().toISOString(),
       };
 
-      await addDoc(collection(db, 'registrations'), registration);
+      await addDoc(collection(db, 'app_registrations'), registration);
       
       setSuccess(true);
       setTimeout(() => navigate('/'), 2000);
